@@ -1,0 +1,241 @@
+import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
+import numpy as np
+import time
+
+# Configuración inicial
+fig, ax = plt.subplots(figsize=(12, 10))
+ax = plt.axes(projection="3d")
+
+def setaxis(x1, x2, y1, y2, z1, z2):
+    ax.set_xlim3d(x1, x2)
+    ax.set_ylim3d(y1, y2)
+    ax.set_zlim3d(z1, z2)
+    ax.view_init(elev=30, azim=40)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+def fix_system(axis_length):
+    x = [0, axis_length]
+    y = [0, axis_length] 
+    z = [0, axis_length]
+    zp = [0, 0]
+    ax.plot3D(x, zp, zp, color='red', label='X')
+    ax.plot3D(zp, y, zp, color='blue', label='Y')
+    ax.plot3D(zp, zp, z, color='green', label='Z')
+    ax.legend()
+
+def sind(t):
+    return np.sin(t * np.pi / 180)
+
+def cosd(t):
+    return np.cos(t * np.pi / 180)
+
+class RobotArm3DOF:
+    def __init__(self):
+        # Longitudes de los eslabones del brazo
+        self.l1 = 3  # Longitud base a primera articulación (eslabón 1)
+        self.l2 = 2  # Longitud primera a segunda articulación (eslabón 2)
+        self.l3 = 1  # Longitud segunda a tercera articulación (eslabón 3)
+        
+        # Ángulos de las 3 articulaciones (en grados)
+        self.theta1 = 0  # Articulación 1 - Base (rotación en Z)
+        self.theta2 = 0  # Articulación 2 - Hombro (rotación en Y)
+        self.theta3 = 0  # Articulación 3 - Codo (rotación en Y)
+        
+        # Para visualización
+        self.line = None
+        self.points = []
+    
+    def forward_kinematics(self):
+        """Calcula la cinemática directa del brazo con 3 articulaciones"""
+        
+        # ARTICULACIÓN 1 - Rotación en Z (base)
+        T1 = np.array([
+            [cosd(self.theta1), -sind(self.theta1), 0, 0],
+            [sind(self.theta1), cosd(self.theta1), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # Eslabón 1 (desplazamiento en Z)
+        L1 = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, self.l1],
+            [0, 0, 0, 1]
+        ])
+        
+        # ARTICULACIÓN 2 - Rotación en Y (hombro)
+        T2 = np.array([
+            [cosd(self.theta2), 0, sind(self.theta2), 0],
+            [0, 1, 0, 0],
+            [-sind(self.theta2), 0, cosd(self.theta2), 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # Eslabón 2 (desplazamiento en X)
+        L2 = np.array([
+            [1, 0, 0, self.l2],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # ARTICULACIÓN 3 - Rotación en Y (codo)
+        T3 = np.array([
+            [cosd(self.theta3), 0, sind(self.theta3), 0],
+            [0, 1, 0, 0],
+            [-sind(self.theta3), 0, cosd(self.theta3), 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # Eslabón 3 (desplazamiento en X)
+        L3 = np.array([
+            [1, 0, 0, self.l3],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
+        
+        # Transformaciones compuestas
+        T01 = T1 @ L1  # Base a articulación 1
+        T02 = T01 @ T2 @ L2  # Base a articulación 2
+        T03 = T02 @ T3 @ L3  # Base a articulación 3 (efector final)
+        
+        # Puntos clave del brazo
+        base = np.array([0, 0, 0, 1])
+        joint1 = T01 @ np.array([0, 0, 0, 1])
+        joint2 = T02 @ np.array([0, 0, 0, 1])
+        end_effector = T03 @ np.array([0, 0, 0, 1])
+        
+        return [base, joint1, joint2, end_effector]
+    
+    def update_plot(self):
+        """Actualiza la visualización del brazo"""
+        points = self.forward_kinematics()
+        self.points = np.array([p[:3] for p in points])
+        
+        if self.line is None:
+            self.line, = ax.plot(self.points[:, 0], self.points[:, 1], self.points[:, 2], 
+                               'o-', linewidth=4, markersize=8, color='blue',
+                               markerfacecolor='red', markeredgewidth=2)
+        else:
+            self.line.set_data(self.points[:, 0], self.points[:, 1])
+            self.line.set_3d_properties(self.points[:, 2])
+    
+    def set_joint_angles(self, theta1, theta2, theta3):
+        """Establece los ángulos de las 3 articulaciones"""
+        self.theta1 = theta1
+        self.theta2 = theta2
+        self.theta3 = theta3
+        self.update_plot()
+    
+    def get_end_effector_position(self):
+        """Devuelve la posición del efector final"""
+        points = self.forward_kinematics()
+        return points[3][:3]
+
+# Crear el brazo robótico de 3 articulaciones
+robot_arm = RobotArm3DOF()
+
+# Configurar los límites del viewport
+setaxis(-6, 6, -6, 6, 0, 8)
+fix_system(5)
+
+# Mostrar posición inicial
+robot_arm.update_plot()
+pos = robot_arm.get_end_effector_position()
+ax.set_title(f'POSICIÓN INICIAL\n'
+            f'θ1: 0.0°, θ2: 0.0°, θ3: 0.0°\n'
+            f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+
+plt.tight_layout()
+plt.draw()
+plt.pause(2)  # Pausa para mostrar posición inicial
+
+# MOVIMIENTO SECUENCIAL (una sola vez)
+num_steps = 30  # Número de pasos para cada fase
+
+print("Iniciando movimiento secuencial...")
+
+# FASE 1: Articulación 1 - 90° sobre su propio eje (eje Z)
+print("FASE 1: Moviendo articulación 1 - 90° sobre su propio eje (Z)...")
+for i in range(num_steps):
+    theta1 = 90 * (i / num_steps)  # De 0° a 90° sobre el eje Z
+    robot_arm.set_joint_angles(theta1, 0, 0)
+    
+    pos = robot_arm.get_end_effector_position()
+    ax.set_title(f'FASE 1: Articulación 1 - 90° sobre eje Z\n'
+                f'θ1: {theta1:.1f}°, θ2: 0.0°, θ3: 0.0°\n'
+                f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+    
+    plt.draw()
+    plt.pause(0.05)  # Pequeña pausa para animación
+
+plt.pause(0.5)  # Pausa al final de la fase 1
+
+# FASE 2: Articulación 1 - 45° adicional sobre el eje Z
+print("FASE 2: Moviendo articulación 1 - 45° adicional sobre eje Z...")
+for i in range(num_steps):
+    theta1 = 90 + 45 * (i / num_steps)  # De 90° a 135° sobre el eje Z
+    robot_arm.set_joint_angles(theta1, 0, 0)
+    
+    pos = robot_arm.get_end_effector_position()
+    ax.set_title(f'FASE 2: Articulación 1 - 45° adicional sobre eje Z\n'
+                f'θ1: {theta1:.1f}°, θ2: 0.0°, θ3: 0.0°\n'
+                f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+    
+    plt.draw()
+    plt.pause(0.05)
+
+plt.pause(0.5)  # Pausa al final de la fase 2
+
+# FASE 3: Articulación 2 - 60° sobre el eje Y
+print("FASE 3: Moviendo articulación 2 - 60° sobre eje Y...")
+for i in range(num_steps):
+    theta2 = 60 * (i / num_steps)  # De 0° a 60° sobre el eje Y
+    robot_arm.set_joint_angles(135, theta2, 0)  # Mantener theta1 en 135°
+    
+    pos = robot_arm.get_end_effector_position()
+    ax.set_title(f'FASE 3: Articulación 2 - 60° sobre eje Y\n'
+                f'θ1: 135.0°, θ2: {theta2:.1f}°, θ3: 0.0°\n'
+                f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+    
+    plt.draw()
+    plt.pause(0.05)
+
+plt.pause(0.5)  # Pausa al final de la fase 3
+
+# FASE 4: Articulación 3 - 30° sobre el eje Y
+print("FASE 4: Moviendo articulación 3 - 30° sobre eje Y...")
+for i in range(num_steps):
+    theta3 = 30 * (i / num_steps)  # De 0° a 30° sobre el eje Y
+    robot_arm.set_joint_angles(135, 60, theta3)  # Mantener theta1 en 135° y theta2 en 60°
+    
+    pos = robot_arm.get_end_effector_position()
+    ax.set_title(f'FASE 4: Articulación 3 - 30° sobre eje Y\n'
+                f'θ1: 135.0°, θ2: 60.0°, θ3: {theta3:.1f}°\n'
+                f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+    
+    plt.draw()
+    plt.pause(0.05)
+
+# POSICIÓN FINAL
+print("Movimiento completado. Posición final alcanzada.")
+pos = robot_arm.get_end_effector_position()
+ax.set_title(f'POSICIÓN FINAL\n'
+            f'θ1: 135.0°, θ2: 60.0°, θ3: 30.0°\n'
+            f'Efector Final: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]')
+
+plt.draw()
+
+print("\nÁngulos finales:")
+print(f"Articulación 1 (Base): 135.0° (sobre eje Z)")
+print(f"Articulación 2 (Hombro): 60.0° (sobre eje Y)")
+print(f"Articulación 3 (Codo): 30.0° (sobre eje Y)")
+print(f"Posición final del efector: [{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]")
+
+plt.tight_layout()
+plt.show()
